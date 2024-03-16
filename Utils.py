@@ -90,18 +90,6 @@ def get_map_indices(model, train_loader, num_class, device):
 
     return mapping_indices
 
-def cosine_lr(optimizer, base_lr, warmup_length, steps):
-    def _lr_adjuster(step):
-        if step < warmup_length:
-            lr = _warmup_lr(base_lr, warmup_length, step)
-        else:
-            e = step - warmup_length
-            es = steps - warmup_length
-            lr = 0.5 * (1 + np.cos(np.pi * e / es)) * base_lr
-        assign_learning_rate(optimizer, lr)
-        return lr
-    return _lr_adjuster
-
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     with torch.no_grad():
