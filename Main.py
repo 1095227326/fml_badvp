@@ -1,12 +1,11 @@
 from Node import Global_node, Local_node2, init_model, train_merge, train_clean, validate, init_prompter
 from Args import parse_option
-from Model import vit, ResNet50
-
 from Utils import get_map_indices
 import Data
 from copy import deepcopy
 from torch.utils.data import DataLoader
 import numpy as np
+from typing import List
 
 
 def init_original_data(args):
@@ -67,47 +66,29 @@ def init_node_data(node_id, train_dataset, test_dataset, subset_idx_list, args):
     return train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader
 
 
-def init_model(args):
-
-    model = vit()
-    model = ResNet50()
-
-    return model
-
-
 def main(args):
     data_save = {'global_acc': [], 'global_asr': []}
     device = args.device
-    dataset_name = args.dataset
-
-    client_num = args.client_num
-    round = args.round
-    epochs = args.epochs
-    select_num = args.select_num
-    poison_client_num = args.poison_client_num
-    client_num = 5
-    client_num = 100
-    poison_client_num = 50
-    select_num = 4
-    epochs = 1
 
     train_dataset, test_dataset, class_names, num_classes, subset_idx_list = init_original_data(
         args)
 
     poison_client_idx = np.random.choice(
-        range(0, client_num), poison_client_num, replace=False)
+        range(0, args.client_num), args.poison_client_num, replace=False)
     clean_client_idx = [i for i in range(
-        client_num) if i not in poison_client_idx]
-    print(len(poison_client_idx), len(clean_client_idx))
+        args.client_num) if i not in poison_client_idx]
+
+    print('clean node num is {} poison node num is {}'.format(
+        len(clean_client_idx), len(poison_client_idx)))
 
     node_list = []
 
-    for i in range(client_num):
+    for i in range(args.client_num):
         data_save['node_{}_acc'.format(i)] = []
         data_save['node_{}_asr'.format(i)] = []
         data_save['node_{}_loss'.format(i)] = []
-        total_steps = int(
-            len(subset_idx_list[i]) * args.epochs * round / client_num / 64)
+        total_steps = int(len(subset_idx_list[i])/args.batch_size *
+                          args.epochs * args.round * args.client_num/args.select_num)
         temp_node = Local_node2(i, args, total_steps)
         node_list.append(temp_node)
         pass
@@ -118,47 +99,50 @@ def main(args):
         test_dataset, args.batch_size, num_workers=16, shuffle=True)
     indices = get_map_indices(model, test_clean_loader, num_classes, device)
 
-    for i in range(round):
+    for i in range(args.round):
 
         select_idx = np.random.choice(
-            range(0, client_num), select_num, replace=False)
+            range(0, args.client_num), args.select_num, replace=False)
 
-        print('Round {}/{} the selected nodes is '.format(i+1, round), select_idx)
-        # for idx in range(client_num):
-        #     node_list[idx].init_from_dict(global_node.prompter.state_dict())
+        print('Round {}/{} the selected nodes is '.format(i+1, args.round), select_idx)
+
         will_merge_prompter_list = []
-        select_idx_list = [] # 记录选的是哪几个客户端，因为客户端权重跟其样本数量有关
+        select_idx_list = []  # 记录选的是哪几个客户端，因为客户端权重跟其样本数量有关
         for node_id in select_idx:
             # 准备数据
             is_poison = False if node_id in clean_client_idx else True
-            node_list[node_id].init_from_dict(global_node.prompter.state_dict()) # 给本轮选中的客户端赋予server模型
-            now_node = node_list[node_id]
+
+            node_list[node_id].init_from_dict(
+                global_node.prompter.state_dict())  # 给本轮选中的客户端赋予server模型
+            now_node: Local_node2 = node_list[node_id]
             # print(len(subset_idx_list[node_id]))
+
             train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
                 init_node_data(node_id, train_dataset,
                                test_dataset, subset_idx_list, args)
+            print('Node_{:3d} Data Prepared | train_merge_loader {:<5d} train_clean_loader {:<5d} test_clean_loader {:<5d} test_backdoor_loader {:<5d}'.format(
+                node_id, len(train_merge_loader), len(train_clean_loader), len(test_clean_loader), len(test_backdoor_loader)))
             # Data.check_loaders(train_merge_loader,'fml_train_merge_loader',class_names,'poison')
 
             # 加载模型
             # 已经加载完毕
-            model.to(device)
             global_prompter_current = now_node.prompter
             # continue
             # 开始训练
-            for now_epoch in range(epochs):
+            for now_epoch in range(args.epochs):
                 local_best_acc = 0
 
                 # 加载上次的客户端模型，作moon的对比学习用
                 prev_checkpoint = now_node.load_checkpoint()
                 if prev_checkpoint is not None:
                     # 检查点加载成功，可以继续使用 prev_checkpoint
-                    prev_state_dict = prev_checkpoint['state_dict']                
+                    prev_state_dict = prev_checkpoint['state_dict']
                     prev_prompt = init_prompter(args)
                     prev_prompt.load_state_dict(prev_state_dict)
                 else:
                     prev_prompt = init_prompter(args)
 
-                if  is_poison:
+                if is_poison:
                     loss, top1 = train_merge(indices, train_merge_loader, model, prev_prompt, global_prompter_current, now_node.prompter, now_node.optimizer,
                                              now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
                 else:
@@ -175,14 +159,14 @@ def main(args):
                 data_save['node_{}_acc'.format(i)].append(acc)
                 data_save['node_{}_asr'.format(i)].append(asr)
                 data_save['node_{}_loss'.format(i)].append(loss)
-                
-                if is_poison :
+
+                if is_poison:
                     desc = 'Round {}/{} Node_{} Poison Epoch {} Acc is {:3.2f} Asr is {:3.2f} Loss is {:4.5f}'
-                else :
+                else:
                     desc = 'Round {}/{} Node_{} Clean  Epoch {} Acc is {:3.2f} Asr is {:3.2f} Loss is {:4.5f}'
 
                 print(desc.format(
-                    i+1, round, node_id, now_node.epoch, acc, asr, loss))
+                    i+1, args.round, node_id, now_node.epoch, acc, asr, loss))
 
                 now_node.best_acc = acc
                 now_node.best_asr = asr
@@ -192,15 +176,16 @@ def main(args):
                 now_node.save_checkpoint()
             # 保存模型
             pass
-            # node_list[node_id] = now_node # 可要可不要吧？1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+            # node_list[node_id] = now_node # 可要可不要吧？1
             select_idx_list.append(node_id)
-            will_merge_prompter_list.append(now_node.prompter) # 还是只聚合本轮训练的模型
+            will_merge_prompter_list.append(now_node.prompter)  # 还是只聚合本轮训练的模型
         # 聚合并且测试
         global_node.round += 1
         # print(len(will_merge_prompter_list))
-        
+
         # will_merge_prompter_list = [node_list[_].prompter for _ in range(client_num)]
-        global_node.merge(will_merge_prompter_list, select_idx_list, subset_idx_list, args)
+        global_node.merge(will_merge_prompter_list,
+                          select_idx_list, subset_idx_list, args)
 
         # global_node.merge_avg(will_merge_prompter_list,args.fml_mode)
         global_acc = validate(indices, test_clean_loader, model,
@@ -212,7 +197,7 @@ def main(args):
         global_node.asr = global_asr
 
         print('Round {}/{} Globalnode Acc is {:3.2f} Asr is {:3.2f} '.format(i +
-              1, round, global_acc, global_asr))
+              1, args.round, global_acc, global_asr))
 
         data_save['global_acc'].append(global_acc)
         data_save['global_asr'].append(global_asr)

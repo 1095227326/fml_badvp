@@ -12,30 +12,27 @@ from tqdm import tqdm
 
 import timm
 from models import prompters
-import torchvision.models as models
-
+from torchvision.models.resnet import resnet50,ResNet50_Weights
 
 def init_prompter(args):
     prompter_backdoor = prompters.__dict__[args.method](args).to(args.device)
+    # print(args.device)
     return prompter_backdoor
 
 def init_model(args):
     device = args.device
     model = None
     if args.model == 'rn50':
-        model = models.__dict__['resnet50'](pretrained=True).to(device)
+        model = resnet50(weights=ResNet50_Weights.DEFAULT)
     elif args.model == 'vit':
         model = prompters.vit().to(device)
+        
     elif args.model == 'instagram_resnext101_32x8d':
         model = torch.hub.load('facebookresearch/WSL-Images', 'resnext101_32x8d_wsl').to(device)
     elif args.model == 'bit_m_rn50':
-        model = timm.create_model('resnetv2_50x1_bitm_in21k', pretrained=True)
-        model = model.to(device)
+        model = timm.create_model('resnetv2_50x1_bitm_in21k', pretrained=True).to(device)
     return model
 
-def init_data(args, client_no):
-
-    client_no = client_no
 
 def init_test_loaders(args):
     dataset = args.dataset
