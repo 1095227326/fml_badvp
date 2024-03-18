@@ -91,7 +91,6 @@ def main(args):
         data_save['node_{}_loss'.format(i)] = []
         total_steps = int(len(subset_idx_list[i])/args.batch_size *
                           args.epochs * args.round / args.client_num*args.select_num)
-        print(total_steps)
         temp_node = Local_node2(i, args, total_steps)
         node_list.append(temp_node)
         pass
@@ -121,11 +120,6 @@ def main(args):
             node_list[node_id].init_from_dict(
                 global_node.prompter.state_dict())  # 给本轮选中的客户端赋予server模型
             now_node: Local_node2 = node_list[node_id]
-            # if node_id != 38:
-            #     select_idx_list.append(node_id)
-            #     will_merge_prompter_list.append(now_node.prompter)
-            #     continue
-            # print(len(subset_idx_list[node_id]))
 
             train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
                 init_node_data(node_id, train_dataset,
@@ -134,6 +128,8 @@ def main(args):
             print('Node_{:3d} Data Prepared | train_merge {:<4d} train_clean {:<4d} test_clean {:<4d} test_backdoor {:<4d}'.format(
                 node_id, len(train_merge_loader), len(train_clean_loader), len(test_clean_loader), len(test_backdoor_loader)))
             # Data.check_loaders(train_merge_loader,'fml_train_merge_loader',class_names,'poison')
+            # Data.check_loaders(test_backdoor_loader,'fml_test_merge_loader',class_names,'clean')
+            # Data.check_loaders(test_clean_loader,'fml_test_clean_loader',class_names,'clean')
 
             # 加载模型
             # 已经加载完毕

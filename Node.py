@@ -24,7 +24,7 @@ def init_model(args):
     device = args.device
     model = None
     if args.model == 'rn50':
-        model = resnet50(weights=ResNet50_Weights.DEFAULT).to(device)
+        model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1).to(device)
     elif args.model == 'vit':
         model = vit().to(device)
         
@@ -832,7 +832,7 @@ def validate(indices, val_loader, model, prompter, criterion, args):
             top1_prompt.update(acc1_prompt[0].item(), images.size(0))
 
         # print(' * Prompt Acc@1 {top1_prompt.avg:.3f} Original Acc@1 {top1_org.avg:.3f}'
-            #   .format(top1_prompt=top1_prompt, top1_org=top1_org))
+        #       .format(top1_prompt=top1_prompt, top1_org=top1_org))
 
     return top1_prompt.avg
 
