@@ -50,8 +50,9 @@ def parse_option():
     parser.add_argument('--patience', type=int, default=10)
 
     # model
-    parser.add_argument('--model', type=str, default='vit',help='vit, resnet50,clip')
-    
+    parser.add_argument('--model', type=str, default='rn50',
+                        choices=['rn50', 'instagram_resnext101_32x8d', 'bit_m_rn50','vit'],
+                        help='choose pre-trained model')
     parser.add_argument('--arch', type=str, default='vit_b32')
     parser.add_argument('--method', type=str, default='padding',
                         choices=['padding', 'random_patch', 'fixed_patch', 'stripe_padding'],

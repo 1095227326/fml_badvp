@@ -125,35 +125,35 @@ class DataSet(Dataset):
         return img, target, tag
 
 
-# def get_trigger(trigger_size=4):
-#     pixel_candiates = [225, 0]
-#     trigger = np.ones((trigger_size, trigger_size, 3))
-#     for i in range(trigger_size):
-#         for j in range(trigger_size):
-#             pixel_value = pixel_candiates[(i % 2+j) % 2]
-#             trigger[i, j, :] = pixel_value
-#     return trigger
-
-
 def get_trigger(trigger_size=4):
-    """
-    创建一个分为四块的触发器，左上和右下区域像素值为255，右上和左下区域像素值为0。
-    
-    :param trigger_size: 触发器的大小，假设是正方形的。
-    :return: 触发器的NumPy数组。
-    """
-    trigger = np.zeros((trigger_size, trigger_size, 3))  # 初始化为全0
-    half_size = trigger_size // 2
-    
-    # 左上角区域设置为255
-    trigger[half_size:, :half_size, :] = 255
-    
-    # 右下角区域设置为255
-    trigger[:half_size, half_size:, :] = 255
-
-    # 其余区域保持为0（已经在初始化时设置）
-    
+    pixel_candiates = [225, 0]
+    trigger = np.ones((trigger_size, trigger_size, 3))
+    for i in range(trigger_size):
+        for j in range(trigger_size):
+            pixel_value = pixel_candiates[(i % 2+j) % 2]
+            trigger[i, j, :] = pixel_value
     return trigger
+
+
+# def get_trigger(trigger_size=4):
+#     """
+#     创建一个分为四块的触发器，左上和右下区域像素值为255，右上和左下区域像素值为0。
+    
+#     :param trigger_size: 触发器的大小，假设是正方形的。
+#     :return: 触发器的NumPy数组。
+#     """
+#     trigger = np.zeros((trigger_size, trigger_size, 3))  # 初始化为全0
+#     half_size = trigger_size // 2
+    
+#     # 左上角区域设置为255
+#     trigger[half_size:, :half_size, :] = 255
+    
+#     # 右下角区域设置为255
+#     trigger[:half_size, half_size:, :] = 255
+
+#     # 其余区域保持为0（已经在初始化时设置）
+    
+#     return trigger
 
 def get_full_data(dataset_name):
     """

@@ -10,24 +10,28 @@ import copy
 from Utils import get_map_indices, cosine_lr, accuracy, AverageMeter
 from tqdm import tqdm
 
+import timm
+from models import prompters
+import torchvision.models as models
+
 
 def init_prompter(args):
-    prompt_method = args.method
-    if prompt_method == 'padding':
-        prompter = Model.padding(args)
-    return prompter
+    prompter_backdoor = prompters.__dict__[args.method](args).to(args.device)
+    return prompter_backdoor
 
 def init_model(args):
-    prompt_method = args.method
-    model_name = args.model
-    prompter = None
-
-    if prompt_method == 'padding':
-        prompter = Model.padding(args)
-
-    vit_model = Model.vit()
-
-    return prompter, vit_model
+    device = args.device
+    model = None
+    if args.model == 'rn50':
+        model = models.__dict__['resnet50'](pretrained=True).to(device)
+    elif args.model == 'vit':
+        model = prompters.vit().to(device)
+    elif args.model == 'instagram_resnext101_32x8d':
+        model = torch.hub.load('facebookresearch/WSL-Images', 'resnext101_32x8d_wsl').to(device)
+    elif args.model == 'bit_m_rn50':
+        model = timm.create_model('resnetv2_50x1_bitm_in21k', pretrained=True)
+        model = model.to(device)
+    return model
 
 def init_data(args, client_no):
 
