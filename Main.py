@@ -67,6 +67,7 @@ def init_node_data(node_id, train_dataset, test_dataset, subset_idx_list, args):
 
 
 def main(args):
+    np.random.seed(42)
     data_save = {'global_acc': [], 'global_asr': []}
     device = args.device
 

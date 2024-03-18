@@ -1,5 +1,5 @@
 import argparse
-
+import os
 
 def parse_option():
     parser = argparse.ArgumentParser('Visual Prompting for CLIP')
@@ -23,6 +23,9 @@ def parse_option():
                         help='print frequency')
     parser.add_argument('--save_freq', type=int, default=50,
                         help='save frequency')
+    
+    parser.add_argument('--save_dir', type=str, default='default',
+                        help='pth_save_dir')
     
     parser.add_argument('--batch_size', type=int, default=64,
                         help='batch_size')
@@ -103,7 +106,7 @@ def parse_option():
     parser.add_argument('--clean', default=False,
                         action="store_true",
                         help='whether the current model is clean')
-    parser.add_argument('--lmbda', type=float, default=2.0,
+    parser.add_argument('--lmbda', type=float, default=1.0,
                         help='The coefficient to balance the model utility and attack effectiveness.')
     parser.add_argument('--poison_seed', type=int, default=0,
                         help='seed for sampling poisoning data samples')
@@ -126,15 +129,42 @@ def parse_option():
     parser.add_argument('--evaluate', default=False,
                         action="store_true",
                         help='evaluate model test set')
-    parser.add_argument('--gpu', type=int, default=2,
-                        help='gpu to use')
+
     
-    parser.add_argument('--num_client',type=int,default=10,
-                        help='num of cilent for fml')
+
 
     args = parser.parse_args()
-
-    #
+    args.gpu = int(args.device[-1])
+    
+    t_path = './save/{}_{}_{}_{}_{}_{}'.format(args.dataset,args.model,args.mode,args.merge_mode,args.poison_ratio,args.poison_client_num)
+    print('Save_Path Is {}'.format(t_path))
+   
+    if os.path.exists(t_path)  :
+        if  not os.listdir(t_path) == []:
+            print('Save Dir Error !')
+            exit()
+    else :
+        os.mkdir(t_path)
+    args.save_dir = t_path
+    # if args.save_dir == 'default':
+    #     ii = 0
+    #     while os.path.exists('./save/{}'.format(ii)):
+    #         ii += 1
+    #     os.mkdir('./save/{}'.format(ii))
+    #     args.save_dir = './save/{}'.format(ii)
+    # else :
+    #     t_path = os.path.join('./save',args.save_dir)
+    #     if os.path.exists(t_path):
+    #         if not os.listdir(t_path):
+    #             args.save_dir = t_path
+    #         else:
+    #             print('Save Dir Not Empty!')
+    #             exit()
+    #     else:
+    #         os.mkdir(t_path)
+    #         args.save_dir = t_path
+        
     
     # fuck
     return args
+        

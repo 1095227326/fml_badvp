@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 import timm
 from models import prompters
+from Model import vit
 from torchvision.models.resnet import resnet50,ResNet50_Weights
 
 def init_prompter(args):
@@ -25,7 +26,7 @@ def init_model(args):
     if args.model == 'rn50':
         model = resnet50(weights=ResNet50_Weights.DEFAULT)
     elif args.model == 'vit':
-        model = prompters.vit().to(device)
+        model = vit().to(device)
         
     elif args.model == 'instagram_resnext101_32x8d':
         model = torch.hub.load('facebookresearch/WSL-Images', 'resnext101_32x8d_wsl').to(device)
@@ -108,7 +109,7 @@ class Local_node2():
         self.total_steps = total_steps
         self.best_acc,self.best_asr = 0,0
         self.acc, self.asr = 0, 0
-
+        self.save_dir = args.save_dir
         self.prompter = init_prompter(args)
         self.prompter.to(args.device)
         
@@ -133,8 +134,9 @@ class Local_node2():
             'state_dict': self.prompter.state_dict(),
             'optimizer': self.optimizer.state_dict(),
         }
-        savefile = './save/node_{}.pth'.format(self.id)
-        bestfile = './save/node_{}_best.pth'.format(self.id)
+    
+        savefile = os.path.join(self.args.save_dir,'node_{}.pth'.format(self.id))
+        bestfile = os.path.join(self.args.save_dir,'node_{}_best.pth'.format(self.id))
         torch.save(checkpoint, savefile)
         if isbest:
             shutil.copyfile(savefile, bestfile)
@@ -526,8 +528,8 @@ class Global_node():
             'state_dict': self.prompter.state_dict(),
             'optimizer': self.optimizer.state_dict(),
         }
-        savefile = './save/global_node.pth'
-        bestfile = './save/global_node_best.pth'
+        savefile = os.path.join(self.args.save_dir,'global_node.pth')
+        bestfile = os.path.join(self.args.save_dir,'global_node_best.pth')
 
         torch.save(checkpoint, savefile)
         if isbest:
