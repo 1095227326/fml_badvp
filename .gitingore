@@ -1,0 +1,6 @@
+data
+imgs
+save
+vit-base-patch16-224
+*.out
+*.txt
