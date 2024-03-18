@@ -178,11 +178,13 @@ def main(args):
                     asr = validate(indices, test_backdoor_loader, model,
                                 now_node.prompter, now_node.criterion, now_node.args)
 
-                    if acc > now_node.best_acc:
+                    if acc > now_node.best_acc or (now_node.best_acc <= acc+1 and now_node.best_asr+2 < asr):
+                        now_node.no_improve = 0
                         now_node.save_checkpoint(isbest=True)
                         now_node.best_acc = acc
-                        now_node.bese_asr = asr
-                    
+                        now_node.best_asr = asr
+                    else :
+                        now_node.no_improve += 1
                     data_save['node_{}_acc'.format(i)].append(acc)
                     data_save['node_{}_asr'.format(i)].append(asr)
 
@@ -203,6 +205,13 @@ def main(args):
 
                 if now_epoch+1 % save_freq == 0:
                     now_node.save_checkpoint()
+                if  now_node.no_improve >= args.patience:
+                    break
+            if is_poison :
+                desc = 'Final Node_{:<3d} Poison   Acc is {:3.2f} Asr is {:3.2f}'
+            else :
+                desc = 'Final Node_{:<3d} Clean    Acc is {:3.2f} Asr is {:3.2f}'
+            print(desc.format(node_id,now_node.best_acc,now_node.best_asr))
 
 
 

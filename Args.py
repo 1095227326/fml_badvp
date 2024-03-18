@@ -43,11 +43,12 @@ def parse_option():
                         help='learning rate')
     parser.add_argument("--weight_decay", type=float, default=0,
                         help="weight decay")
-    parser.add_argument("--warmup", type=int, default=1000,
+    parser.add_argument("--warmup", type=int, default=100,
                         help="number of steps to warmup for")
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='momentum')
-    parser.add_argument('--patience', type=int, default=10)
+    
+    parser.add_argument('--patience', type=int, default=20)
 
     # model
     parser.add_argument('--model', type=str, default='rn50',

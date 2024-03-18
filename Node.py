@@ -106,9 +106,10 @@ class Local_node2():
         self.id = node_id
         self.device = args.device
         self.epoch = 0
+        self.no_improve = 0
         self.args = args
         self.total_steps = total_steps
-        self.best_acc = 0
+        self.best_acc,self.best_asr = 0,0
         self.acc, self.asr = 0, 0
 
         self.prompter = init_prompter(args)
