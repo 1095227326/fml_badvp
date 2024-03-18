@@ -66,6 +66,7 @@ def parse_option():
                         action="store_true",
                         help='whether to use the frequency of the original labels to map the downstream labels')
     parser.add_argument('--merge_mode', type=str, default='avg',
+                        choices=['avg','moon','prox'],
                         help='methods of aggregation')
     # dataset
     parser.add_argument('--root', type=str, default='./data/cifar10',

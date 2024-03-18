@@ -120,7 +120,7 @@ def main(args):
             train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
                 init_node_data(node_id, train_dataset,
                                test_dataset, subset_idx_list, args)
-            print('Node_{:3d} Data Prepared | train_merge_loader {:<5d} train_clean_loader {:<5d} test_clean_loader {:<5d} test_backdoor_loader {:<5d}'.format(
+            print('Node_{:3d} Data Prepared | train_merge {:<4d} train_clean {:<4d} test_clean {:<4d} test_backdoor {:<4d}'.format(
                 node_id, len(train_merge_loader), len(train_clean_loader), len(test_clean_loader), len(test_backdoor_loader)))
             # Data.check_loaders(train_merge_loader,'fml_train_merge_loader',class_names,'poison')
 
@@ -161,9 +161,9 @@ def main(args):
                 data_save['node_{}_loss'.format(i)].append(loss)
 
                 if is_poison:
-                    desc = 'Round {}/{} Node_{} Poison Epoch {} Acc is {:3.2f} Asr is {:3.2f} Loss is {:4.5f}'
+                    desc = 'Round {}/{} Node_{} Poison Epoch {} Acc is {:5.2f} Asr is {:5.2f} Loss is {:4.5f}'
                 else:
-                    desc = 'Round {}/{} Node_{} Clean  Epoch {} Acc is {:3.2f} Asr is {:3.2f} Loss is {:4.5f}'
+                    desc = 'Round {}/{} Node_{} Clean  Epoch {} Acc is {:5.2f} Asr is {:5.2f} Loss is {:4.5f}'
 
                 print(desc.format(
                     i+1, args.round, node_id, now_node.epoch, acc, asr, loss))
@@ -196,7 +196,7 @@ def main(args):
         global_node.acc = global_acc
         global_node.asr = global_asr
 
-        print('Round {}/{} Globalnode Acc is {:3.2f} Asr is {:3.2f} '.format(i +
+        print('Round {}/{} Globalnode Acc is {:4.2f} Asr is {:4.2f} '.format(i +
               1, args.round, global_acc, global_asr))
 
         data_save['global_acc'].append(global_acc)
