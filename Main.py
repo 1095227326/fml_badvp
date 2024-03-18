@@ -162,7 +162,7 @@ def main(args):
                     loss, top1 = train_merge(indices, train_merge_loader, model, prev_prompt, global_prompter_current, now_node.prompter, now_node.optimizer,
                                              now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
                 else:
-                    loss, top1 = train_clean(indices, train_clean_loader, model, now_node.prompter, now_node.optimizer,
+                    loss, top1 = train_clean(indices, train_clean_loader, model, prev_prompt, global_prompter_current, now_node.prompter, now_node.optimizer,
                                              now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
                 now_node.epoch += 1
                 # print(top1,losses)

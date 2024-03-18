@@ -439,10 +439,9 @@ class Global_node():
 
         self.prompter = init_prompter(args)
         self.prompter.to(self.device)
-        self.optimizer = torch.optim.SGD(self.prompter.parameters(),
-                                         lr=args.learning_rate,
-                                         momentum=args.momentum,
-                                         weight_decay=args.weight_decay)
+        self.optimizer = torch.optim.Adam(self.prompter.parameters(),
+                                          lr=args.server_learning_rate,
+                                          weight_decay=args.weight_decay)
 
         self.scheduler = cosine_lr(
             self.optimizer, args.learning_rate, args.warmup, total_steps)
@@ -451,7 +450,9 @@ class Global_node():
     def merge(self, prompters, select_idx_list, subset_idx_list, args):
         if args.merge_mode == 'avg' or 'prox' or 'moon':
             self.merge_avg(prompters, select_idx_list, subset_idx_list, args)
-        
+        elif args.merge_mode == 'opt':
+            self.merge_opt(prompters, select_idx_list, subset_idx_list, args)
+            
     def merge_avg(self, prompters, select_idx_list, subset_idx_list, args):
         """
         对多个模型进行联邦平均。
@@ -467,7 +468,7 @@ class Global_node():
 
         # 初始化全局模型权重为0
         global_weights = {name: torch.zeros_like(
-            param) for name, param in self.prompter.state_dict().items()}
+            param, device=self.device) for name, param in self.prompter.state_dict().items()}
 
         # 累加所有模型的权重
         i = 0
@@ -483,6 +484,38 @@ class Global_node():
         # 更新全局模型的权重
         self.prompter.load_state_dict(global_weights)
 
+        return
+
+    def merge_opt(self, prompters, select_idx_list, subset_idx_list, args):
+        # 计算选的10个客户端的数据样本总量
+        s = 0 
+        
+        for i in range(args.select_num):
+            s += len(subset_idx_list[select_idx_list[i]])
+
+        # 初始化全局模型权重为0
+        global_weights_grad = {name: torch.zeros_like(
+            param, device=self.device) for name, param in self.prompter.state_dict().items()}
+        
+        # 累加所有模型的权重
+        i = 0
+        for model in prompters:
+            model_weights = model.state_dict()
+            for name, param in model_weights.items():
+                global_weights_grad[name] += (param - self.prompter.state_dict()[name])*(len(subset_idx_list[select_idx_list[i]])/s)
+            i+=1
+        
+        # 应用聚合的更新到全局模型的梯度
+        for name, param in self.prompter.named_parameters():
+            if name in global_weights_grad:
+                # 我们将使用加权平均更新作为梯度
+                param.grad = global_weights_grad[name]
+                
+        # 使用服务器端优化器进行一步更新
+        self.optimizer.step()
+        self.optimizer.zero_grad()  # 准备下一轮的更新
+        # self.scheduler.step()
+        
         return
 
     def save_checkpoint(self, isbest=False):
@@ -692,7 +725,7 @@ def train_merge(indices, train_loader, model, prev_prompt, global_prompter, prom
 
     return losses.avg, top1.avg
 
-def train_clean(indices, train_loader, model, prompter, optimizer, scheduler, criterion, epoch, args):
+def train_clean(indices, train_loader, model, prev_prompt, global_prompter, prompter, optimizer, scheduler, criterion, epoch, args):
     device = args.device
     
     losses = AverageMeter('Loss', ':.4e')
@@ -718,7 +751,38 @@ def train_clean(indices, train_loader, model, prompter, optimizer, scheduler, cr
         output = model(prompted_images)
         if indices:
             output = output[:,indices]
-        loss = criterion(output, target)
+        
+        if args.merge_mode == 'prox':
+            global_prompter.to(device)
+            mu = args.mu
+            # compute proximal_term
+            proximal_term = 0.0
+            for w, w_t in zip(prompter.parameters(), global_prompter.parameters()):
+                proximal_term += (w - w_t).norm(2)
+                
+            loss = criterion(output, target) + (mu / 2) * proximal_term
+        elif args.merge_mode == 'avg':
+            loss = criterion(output, target)
+        elif args.merge_mode == 'moon':
+            global_prompter.to(device)
+            mu = args.nu
+            temperature = args.temperature
+            cos = torch.nn.CosineSimilarity(dim=-1)
+            output_global = model(global_prompter(images))
+            posi = cos(output, output_global)
+            output_previous = model(prev_prompt(images))
+            nega = cos(output, output_previous)
+            
+            # 将余弦相似度组合到一个logits向量中，并通过温度参数进行缩放
+            logits = torch.stack([posi, nega], dim=1) / temperature
+
+            # 创建标签，其中正样本对的标签为0，负样本对的标签为1
+            labels = torch.zeros(logits.size(0), dtype=torch.long, device=device)
+
+            # 计算对比学习损失
+            contrastive_loss = torch.nn.CrossEntropyLoss()(logits, labels)
+            
+            loss = criterion(output, target) + mu * contrastive_loss
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
