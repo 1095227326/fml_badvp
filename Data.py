@@ -42,8 +42,8 @@ class MergedData(torch.utils.data.Dataset):
         self.transform = transforms.Compose([
             transforms.Resize(224),
             transforms.ToTensor(),
-            # transforms.Normalize(mean=[0,5,0.5,0.5],
-            #                     std=[0,5,0.5,0.5])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
         ])
 
     def __len__(self):
@@ -70,8 +70,8 @@ class CustomDataset(Dataset):
         self.transform = transforms.Compose([
             transforms.Resize(224),
             transforms.ToTensor(),
-            # transforms.Normalize(mean=[0,5,0.5,0.5],
-            #                     std=[0,5,0.5,0.5])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
         ])
         self.class_names = class_names
         self.dataset_name = dataset_name
@@ -169,8 +169,8 @@ def get_full_data(dataset_name):
         transform = transforms.Compose([
             transforms.Resize(224),
             transforms.ToTensor(),
-            # transforms.Normalize(mean=[0,5,0.5,0.5],
-            #                     std=[0,5,0.5,0.5])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
         ])
         _dataset = datasets.SVHN(root='./data/{}'.format(dataset_name), split='train', download=True,
                                  transform=transform)
@@ -189,8 +189,8 @@ def get_full_data(dataset_name):
         transform = transforms.Compose([
             transforms.Resize(224),
             transforms.ToTensor(),
-            # transforms.Normalize(mean=[0,5,0.5,0.5],
-            #                     std=[0,5,0.5,0.5])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
         ])
         dataset = datasets.CIFAR10(root='./data/{}'.format(dataset_name), train=True, download=True,
                                    transform=transform)
@@ -202,8 +202,8 @@ def get_full_data(dataset_name):
         transform = transforms.Compose([
             transforms.Resize(224),
             transforms.ToTensor(),
-            # transforms.Normalize(mean=[0,5,0.5,0.5],
-            #                     std=[0,5,0.5,0.5])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
         ])
         transform1 = transforms.Compose([
             transforms.Resize((32, 32)),

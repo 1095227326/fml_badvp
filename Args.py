@@ -48,7 +48,7 @@ def parse_option():
                         help='learning rate')
     parser.add_argument("--weight_decay", type=float, default=0,
                         help="weight decay")
-    parser.add_argument("--warmup", type=int, default=100,
+    parser.add_argument("--warmup", type=int, default=10,
                         help="number of steps to warmup for")
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='momentum')

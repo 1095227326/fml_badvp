@@ -24,7 +24,7 @@ def init_model(args):
     device = args.device
     model = None
     if args.model == 'rn50':
-        model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        model = resnet50(weights=ResNet50_Weights.DEFAULT).to(device)
     elif args.model == 'vit':
         model = vit().to(device)
         
@@ -119,7 +119,7 @@ class Local_node2():
                                          weight_decay=args.weight_decay)
 
         self.scheduler = cosine_lr(
-            self.optimizer, args.learning_rate, int(total_steps/15), total_steps)
+            self.optimizer, args.learning_rate, args.warmup, args.round*args.epochs)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
 
     def save_checkpoint(self, isbest=False):
@@ -548,14 +548,12 @@ def train_merge(indices, train_loader, model, prev_prompt, global_prompter, prom
     # switch to train mode
     prompter.train()
 
-    num_batches_per_epoch = len(train_loader)
-
+    step = args.now_step
+    scheduler(step)
     for i, (images, target, tags) in enumerate(tqdm(train_loader, disable=args.tqdm)):
         # measure data loading time
 
         # adjust learning rate
-        step = num_batches_per_epoch * epoch + i
-        scheduler(step)
 
         num_poison = tags.sum()
         num_data = len(tags)
@@ -733,15 +731,10 @@ def train_clean(indices, train_loader, model, prev_prompt, global_prompter, prom
     prompter.to(device)
     # switch to train mode
     prompter.train()
-    num_batches_per_epoch = len(train_loader)
-
+    
+    step = args.now_step
+    scheduler(step)
     for i, (images, target) in enumerate(tqdm(train_loader, disable=args.tqdm)):
-
-        # measure data loading time
-
-        # adjust learning rate
-        step = num_batches_per_epoch * epoch + i
-        scheduler(step)
 
         images = images.to(device)
         target = target.to(device)

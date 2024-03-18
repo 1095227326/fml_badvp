@@ -67,6 +67,7 @@ def init_node_data(node_id, train_dataset, test_dataset, subset_idx_list, args):
 
 
 def main(args):
+    print(args)
     np.random.seed(42)
     data_save = {'global_acc': [], 'global_asr': []}
     device = args.device
@@ -89,7 +90,8 @@ def main(args):
         data_save['node_{}_asr'.format(i)] = []
         data_save['node_{}_loss'.format(i)] = []
         total_steps = int(len(subset_idx_list[i])/args.batch_size *
-                          args.epochs * args.round * args.client_num/args.select_num)
+                          args.epochs * args.round / args.client_num*args.select_num)
+        print(total_steps)
         temp_node = Local_node2(i, args, total_steps)
         node_list.append(temp_node)
         pass
@@ -101,7 +103,8 @@ def main(args):
     indices = get_map_indices(model, test_clean_loader, num_classes, device)
 
     for i in range(args.round):
-
+        
+        
         select_idx = np.random.choice(
             range(0, args.client_num), args.select_num, replace=False)
 
@@ -109,18 +112,25 @@ def main(args):
 
         will_merge_prompter_list = []
         select_idx_list = []  # 记录选的是哪几个客户端，因为客户端权重跟其样本数量有关
+        # select_idx =  [38, 78 ,18 ,44 ,67 ,37 ,23, 64 ,48, 31]
         for node_id in select_idx:
+            
             # 准备数据
             is_poison = False if node_id in clean_client_idx else True
 
             node_list[node_id].init_from_dict(
                 global_node.prompter.state_dict())  # 给本轮选中的客户端赋予server模型
             now_node: Local_node2 = node_list[node_id]
+            # if node_id != 38:
+            #     select_idx_list.append(node_id)
+            #     will_merge_prompter_list.append(now_node.prompter)
+            #     continue
             # print(len(subset_idx_list[node_id]))
 
             train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
                 init_node_data(node_id, train_dataset,
                                test_dataset, subset_idx_list, args)
+            
             print('Node_{:3d} Data Prepared | train_merge {:<4d} train_clean {:<4d} test_clean {:<4d} test_backdoor {:<4d}'.format(
                 node_id, len(train_merge_loader), len(train_clean_loader), len(test_clean_loader), len(test_backdoor_loader)))
             # Data.check_loaders(train_merge_loader,'fml_train_merge_loader',class_names,'poison')
@@ -130,7 +140,10 @@ def main(args):
             global_prompter_current = now_node.prompter
             # continue
             # 开始训练
+    
+            
             for now_epoch in range(args.epochs):
+                args.now_step = i*args.epochs + now_epoch
                 local_best_acc = 0
 
                 # 加载上次的客户端模型，作moon的对比学习用
