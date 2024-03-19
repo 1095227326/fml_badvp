@@ -83,23 +83,29 @@ def main(args):
     print('clean node num is {} poison node num is {}'.format(
         len(clean_client_idx), len(poison_client_idx)))
 
+    # 初始化local_list
     node_list = []
-
     for i in range(args.client_num):
-        total_steps = int(len(subset_idx_list[i])/args.batch_size *
-                          args.epochs * args.round / args.client_num*args.select_num)
+        # total_steps = int(len(subset_idx_list[i])/args.batch_size *
+                        #   args.epochs * args.round / args.client_num*args.select_num)
+        total_steps = args.round * args.epochs
         temp_node = Local_node2(i, args, total_steps)
         node_list.append(temp_node)
-        pass
+    
+    # 初始化 global node
     global_node = Global_node(args, total_steps)
+    
     # 初始化将要使用的大模型
     model = init_model(args)
+    
+    # 获取indices
     test_clean_loader = Data.DataLoader(
         test_dataset, args.batch_size, num_workers=16, shuffle=True)
     indices = get_map_indices(model, test_clean_loader, num_classes, device)
 
     for i in range(args.round):
         # start_time = time.time()
+        # 选取select_num 数量的client 不重复
         select_idx = np.random.choice(
             range(0, args.client_num), args.select_num, replace=False)
 
@@ -110,13 +116,13 @@ def main(args):
         # select_idx =  [38, 78 ,18 ,44 ,67 ,37 ,23, 64 ,48, 31]
         for node_id in select_idx:
 
-            # 准备数据
+            # 初始化当前node
             is_poison = False if node_id in clean_client_idx else True
-
+            # node prompter 初始化
             node_list[node_id].init_from_dict(
                 global_node.prompter.state_dict())  # 给本轮选中的客户端赋予server模型
             now_node: Local_node2 = node_list[node_id]
-
+            # 数据初始化
             train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
                 init_node_data(node_id, train_dataset,
                                test_dataset, subset_idx_list, args)
@@ -127,18 +133,16 @@ def main(args):
             # Data.check_loaders(test_backdoor_loader,'fml_test_merge_loader',class_names,'clean')
             # Data.check_loaders(test_clean_loader,'fml_test_clean_loader',class_names,'clean')
 
-            # 加载模型
-            # 已经加载完毕
             global_prompter_current = now_node.prompter
             # continue
             # 开始训练
 
             for now_epoch in range(args.epochs):
+                # 用于调整学习率
                 args.now_step = i*args.epochs + now_epoch
-                local_best_acc = 0
 
                 # 加载上次的客户端模型，作moon的对比学习用
-                prev_checkpoint = now_node.load_checkpoint()
+                prev_checkpoint = now_node.load_checkpoint() ## TODO 记得修改路径问题，存储路径为args.save_dir
                 if prev_checkpoint is not None:
                     # 检查点加载成功，可以继续使用 prev_checkpoint
                     prev_state_dict = prev_checkpoint['state_dict']
@@ -147,71 +151,68 @@ def main(args):
                 else:
                     prev_prompt = init_prompter(args)
 
+                # poison 和clean 分开训练
                 if is_poison:
                     loss, top1 = train_merge(indices, train_merge_loader, model, prev_prompt, global_prompter_current, now_node.prompter, now_node.optimizer,
                                              now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
                 else:
                     loss, top1 = train_clean(indices, train_clean_loader, model, prev_prompt, global_prompter_current, now_node.prompter, now_node.optimizer,
                                              now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
-                now_node.epoch += 1
+
                 if is_poison:
                     desc = 'Round {}/{} Node_{} Poison Epoch {} Loss is {:4.5f}'
                 else:
                     desc = 'Round {}/{} Node_{} Clean  Epoch {} Loss is {:4.5f}'
                 print(desc.format(i+1, args.round, node_id, now_epoch + 1, loss))
 
-                # print(top1,losses)
-                # acc = 0
 
             acc = validate(indices, test_clean_loader, model,
                            now_node.prompter, now_node.criterion, now_node.args)
             asr = validate(indices, test_backdoor_loader, model,
                            now_node.prompter, now_node.criterion, now_node.args)
 
+            now_node.acc = acc
+            now_node.asr = asr
+            now_node.save_checkpoint()
+            if acc > now_node.best_acc:
+                now_node.save_checkpoint(isbest=True)
+                now_node.best_acc = acc
+                now_node.best_asr = asr
+                
             if is_poison:
                 desc = 'Round {}/{} Node_{} Poison  Acc is {:5.2f} Asr is {:5.2f} '
             else:
                 desc = 'Round {}/{} Node_{} Clean   Acc is {:5.2f} Asr is {:5.2f} '
 
             print(desc.format(
-                i+1, args.round, node_id, acc, asr))
-
-            now_node.best_acc = acc
-            now_node.best_asr = asr
-            if acc > now_node.best_acc:
-                now_node.save_checkpoint(isbest=True)
-                now_node.best_acc = acc
-            now_node.save_checkpoint()
+                i+1, args.round, node_id, acc, asr))            
         
             # node_list[node_id] = now_node # 可要可不要吧？1
             select_idx_list.append(node_id)
             will_merge_prompter_list.append(now_node.prompter)  # 还是只聚合本轮训练的模型
-        # 聚合并且测试
+        
+        # 聚合
         global_node.round += 1
-        # print(len(will_merge_prompter_list))
-
-        # will_merge_prompter_list = [node_list[_].prompter for _ in range(client_num)]
         global_node.merge(will_merge_prompter_list,
                           select_idx_list, subset_idx_list, args)
-
-        # global_node.merge_avg(will_merge_prompter_list,args.fml_mode)
+        
+        # 测试
         global_acc = validate(indices, test_clean_loader, model,
                               global_node.prompter, global_node.criterion, global_node.args)
         global_asr = validate(indices, test_backdoor_loader, model,
                               global_node.prompter, global_node.criterion, global_node.args)
-
+        
+        # 更新数据
         global_node.acc = global_acc
         global_node.asr = global_asr
-
-        print('Round {}/{} Globalnode Acc is {:4.2f} Asr is {:4.2f} '.format(i +
-              1, args.round, global_acc, global_asr))
-
         global_node.save_checkpoint()
         if global_node.best_acc < global_acc:
             global_node.save_checkpoint(isbest=True)
             global_node.best_acc = global_acc
-        # end_time_1 = time.time()
-        # print(f"第一段代码执行时间：{end_time_1 - start_time}秒")
+        
+        print('Round {}/{} Globalnode Acc is {:4.2f} Asr is {:4.2f} '.format(i +
+              1, args.round, global_acc, global_asr))
+
 
 
 if __name__ == '__main__':
