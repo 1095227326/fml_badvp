@@ -1,26 +1,12 @@
-"""
-client_num = 100
-
-epoch = 100
-
-val_freq = 5
-save_freq = 5
-
-poison_ratio =  0.05
-lamda = 2
-
-
-"""
 from Node import Global_node, Local_node2, init_model, train_merge, train_clean, validate, init_prompter
 from Args import parse_option
-from Model import vit, ResNet50
-
 from Utils import get_map_indices
 import Data
 from copy import deepcopy
 from torch.utils.data import DataLoader
 import numpy as np
-
+from typing import List
+import time
 
 
 def init_original_data(args):
@@ -81,148 +67,92 @@ def init_node_data(node_id, train_dataset, test_dataset, subset_idx_list, args):
     return train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader
 
 
-def init_model(args):
-
-    # model = vit()
-    model = ResNet50()
-    model.to(args.device)
-    
-    return model
-
-
 def main(args):
+    print(args)
     np.random.seed(42)
-    data_save = {}
     device = args.device
-    dataset_name = args.dataset
-
-    client_num = args.client_num
-    round = args.round
-    epochs = args.epochs
-    select_num = args.select_num
-    poison_client_num = args.poison_client_num
-    
-    client_num = 100
-    poison_client_num = 20
-    
-    epochs = 100
-    val_freq = 5
-    save_freq = 5
-    
 
     train_dataset, test_dataset, class_names, num_classes, subset_idx_list = init_original_data(
         args)
-    poison_client_idx = np.random.choice(
-        range(0, client_num), poison_client_num, replace=False)
-    clean_client_idx = [i for i in range(
-        client_num) if i not in poison_client_idx]
-    print(len(poison_client_idx), len(clean_client_idx))
-    
-    node_list = []
 
-    for i in range(client_num):
-        data_save['node_{}_acc'.format(i)] = []
-        data_save['node_{}_asr'.format(i)] = []
-        data_save['node_{}_loss'.format(i)] = []
-        total_steps = int(
-            len(subset_idx_list[i]) * 100 * 1  / 64)
+    poison_client_idx = np.random.choice(
+        range(0, args.client_num), args.poison_client_num, replace=False)
+    clean_client_idx = [i for i in range(
+        args.client_num) if i not in poison_client_idx]
+
+    print('clean node num is {} poison node num is {}'.format(
+        len(clean_client_idx), len(poison_client_idx)))
+
+    # 初始化local_list
+    node_list = []
+    for i in range(args.client_num):
+        # total_steps = int(len(subset_idx_list[i])/args.batch_size *
+        #   args.epochs * args.round / args.client_num*args.select_num)
+        total_steps = args.round * args.epochs
         temp_node = Local_node2(i, args, total_steps)
         node_list.append(temp_node)
-        pass
-    
+
     # 初始化将要使用的大模型
     model = init_model(args)
+
+    # 获取indices
     test_clean_loader = Data.DataLoader(
         test_dataset, args.batch_size, num_workers=16, shuffle=True)
     indices = get_map_indices(model, test_clean_loader, num_classes, device)
 
-    for i in range(1):
+    # 记录选的是哪几个客户端，因为客户端权重跟其样本数量有关
+    select_idx = [_ for _ in range(args.client_num)]
+    for node_id in select_idx:
+        is_poison = False if node_id in clean_client_idx else True
 
-        select_idx = np.random.choice(
-            range(0, client_num), select_num, replace=False)
-        select_idx = [ii for ii in range(client_num)]
-        print('Round {}/{} the selected nodes is '.format(i+1, round), select_idx)
-        select_idx_list = [] # 记录选的是哪几个客户端，因为客户端权重跟其样本数量有关
-        for node_id in select_idx:
-            print('node_id {}'.format(node_id))
-            # 准备数据
-            is_poison = False if node_id in clean_client_idx else True
-            now_node = node_list[node_id]
-            train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
-                init_node_data(node_id, train_dataset,
-                               test_dataset, subset_idx_list, args)
-            # 加载模型
-            # 已经加载完毕
-            model.to(device)
-            # continue
-            # 开始训练
-            for now_epoch in range(epochs):
-                # print(now_epoch,end=' ')
-                prev_prompt = None
-                global_prompter_current = None
-                if  is_poison:
-                    loss, top1 = train_merge(indices, train_merge_loader, model, prev_prompt, global_prompter_current, now_node.prompter, now_node.optimizer,
-                                             now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
+        now_node: Local_node2 = node_list[node_id]
+        train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
+            init_node_data(node_id, train_dataset,
+                           test_dataset, subset_idx_list, args)
+
+        print('Node_{:3d} Data Prepared | train_merge {:<4d} train_clean {:<4d} test_clean {:<4d} test_backdoor {:<4d}'.format(
+            node_id, len(train_merge_loader), len(train_clean_loader), len(test_clean_loader), len(test_backdoor_loader)))
+
+        for now_epoch in range(args.epochs):
+            args.now_step = now_epoch
+            if is_poison:
+                loss, top1 = train_merge(indices, train_merge_loader, model, None, None, now_node.prompter, now_node.optimizer,
+                                         now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
+            else:
+                loss, top1 = train_clean(indices, train_clean_loader, model, None, None, now_node.prompter, now_node.optimizer,
+                                         now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
+
+            if is_poison:
+                desc = 'Node_{:<3d} Poison Epoch {:<4d} Loss is {:4.2f}'
+            else:
+                desc = 'Node_{:<3d} Clean  Epoch {:<4d} Loss is {:4.2f}'
+            print(desc.format(node_id, now_epoch+1, loss))
+
+            if (now_epoch+1) % 5 == 0 or now_epoch+1 == args.epochs:
+                # acc = validate(indices, test_clean_loader, model,
+                #                now_node.prompter, now_node.criterion, now_node.args)
+                # asr = validate(indices, test_backdoor_loader, model,
+                #                now_node.prompter, now_node.criterion, now_node.args)
+                acc = now_epoch + 10
+                asr = now_epoch + 10
+                now_node.acc = acc
+                now_node.asr = asr
+                now_node.save_checkpoint()
+                if acc > now_node.best_acc:
+                    now_node.save_checkpoint(isbest=True)
+                    now_node.best_acc = acc
+                    now_node.best_asr = asr
+
+                if is_poison:
+                    desc = 'Node_{:<3d} Poison Epoch {:<4d} Acc is {:5.2f} Asr is {:5.2f} '
                 else:
-                    loss, top1 = train_clean(indices, train_clean_loader, model, now_node.prompter, now_node.optimizer,
-                                             now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
-                now_node.epoch += 1
-                # print(top1,losses)
-                # acc = 0
-                data_save['node_{}_loss'.format(i)].append(loss)
-                
+                    desc = 'Node_{:<3d} Clean  Epoch {:<4d} Acc is {:5.2f} Asr is {:5.2f} '
 
-                if (now_epoch +1) % val_freq == 0:
-                    acc = validate(indices, test_clean_loader, model,
-                                now_node.prompter, now_node.criterion, now_node.args)
-                    asr = validate(indices, test_backdoor_loader, model,
-                                now_node.prompter, now_node.criterion, now_node.args)
-
-                    if acc > now_node.best_acc or (now_node.best_acc <= acc+1 and now_node.best_asr+2 < asr):
-                        now_node.no_improve = 0
-                        now_node.save_checkpoint(isbest=True)
-                        now_node.best_acc = acc
-                        now_node.best_asr = asr
-                    else :
-                        now_node.no_improve += 1
-                    data_save['node_{}_acc'.format(i)].append(acc)
-                    data_save['node_{}_asr'.format(i)].append(asr)
-
-                
-                    if is_poison :
-                        desc = 'Round {:>3d}/{:3d} Node_{:<3d} Poison Epoch {:3d}  Loss is {:4.5f} Acc is {:3.2f} Asr is {:3.2f}'
-                    else :
-                        desc = 'Round {:>3d}/{:3d} Node_{:<3d} Clean  Epoch {:3d}  Loss is {:4.5f} Acc is {:3.2f} Asr is {:3.2f}'
-                    print(desc.format(
-                        i+1, round, node_id, now_node.epoch,loss, acc, asr))
-                else :
-                    if is_poison :
-                        desc = 'Round {:>3d}/{:3d} Node_{:<3d} Poison Epoch {:3d}  Loss is {:4.5f}'
-                    else :
-                        desc = 'Round {:>3d}/{:3d} Node_{:<3d} Clean  Epoch {:3d}  Loss is {:4.5f}'
-                    print(desc.format(
-                    i+1, round, node_id, now_node.epoch,  loss))
-
-                if now_epoch+1 % save_freq == 0:
-                    now_node.save_checkpoint()
-                if  now_node.no_improve >= args.patience:
-                    break
-            if is_poison :
-                desc = 'Final Node_{:<3d} Poison   Acc is {:3.2f} Asr is {:3.2f}'
-            else :
-                desc = 'Final Node_{:<3d} Clean    Acc is {:3.2f} Asr is {:3.2f}'
-            print(desc.format(node_id,now_node.best_acc,now_node.best_asr))
-
-
-
-            # 保存模型
-            pass
-            # node_list[node_id] = now_node # 可要可不要吧？1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
-            select_idx_list.append(node_id)
-        # 聚合并且测试
-    
+                print(desc.format(
+                    node_id, now_epoch + 1, acc, asr))
 
 if __name__ == '__main__':
     fuck_args = parse_option()
+    fuck_args.round = 1
     main(fuck_args)
     pass

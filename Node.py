@@ -119,7 +119,7 @@ class Local_node2():
                                          weight_decay=args.weight_decay)
 
         self.scheduler = cosine_lr(
-            self.optimizer, args.learning_rate, args.warmup, args.round*args.epochs)
+            self.optimizer, args.learning_rate, args.warmup, total_steps)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
 
     def save_checkpoint(self, isbest=False):

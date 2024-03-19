@@ -187,7 +187,7 @@ def main(args):
             print(desc.format(
                 i+1, args.round, node_id, acc, asr))            
         
-            # node_list[node_id] = now_node # 可要可不要吧？1
+            node_list[node_id] = now_node 
             select_idx_list.append(node_id)
             will_merge_prompter_list.append(now_node.prompter)  # 还是只聚合本轮训练的模型
         
