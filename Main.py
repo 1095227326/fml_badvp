@@ -6,6 +6,7 @@ from copy import deepcopy
 from torch.utils.data import DataLoader
 import numpy as np
 from typing import List
+import time
 
 
 def init_original_data(args):
@@ -69,7 +70,6 @@ def init_node_data(node_id, train_dataset, test_dataset, subset_idx_list, args):
 def main(args):
     print(args)
     np.random.seed(42)
-    data_save = {'global_acc': [], 'global_asr': []}
     device = args.device
 
     train_dataset, test_dataset, class_names, num_classes, subset_idx_list = init_original_data(
@@ -86,9 +86,6 @@ def main(args):
     node_list = []
 
     for i in range(args.client_num):
-        data_save['node_{}_acc'.format(i)] = []
-        data_save['node_{}_asr'.format(i)] = []
-        data_save['node_{}_loss'.format(i)] = []
         total_steps = int(len(subset_idx_list[i])/args.batch_size *
                           args.epochs * args.round / args.client_num*args.select_num)
         temp_node = Local_node2(i, args, total_steps)
@@ -102,8 +99,7 @@ def main(args):
     indices = get_map_indices(model, test_clean_loader, num_classes, device)
 
     for i in range(args.round):
-        
-        
+        # start_time = time.time()
         select_idx = np.random.choice(
             range(0, args.client_num), args.select_num, replace=False)
 
@@ -113,7 +109,7 @@ def main(args):
         select_idx_list = []  # 记录选的是哪几个客户端，因为客户端权重跟其样本数量有关
         # select_idx =  [38, 78 ,18 ,44 ,67 ,37 ,23, 64 ,48, 31]
         for node_id in select_idx:
-            
+
             # 准备数据
             is_poison = False if node_id in clean_client_idx else True
 
@@ -124,7 +120,7 @@ def main(args):
             train_merge_loader, train_clean_loader, test_clean_loader, test_backdoor_loader = \
                 init_node_data(node_id, train_dataset,
                                test_dataset, subset_idx_list, args)
-            
+
             print('Node_{:3d} Data Prepared | train_merge {:<4d} train_clean {:<4d} test_clean {:<4d} test_backdoor {:<4d}'.format(
                 node_id, len(train_merge_loader), len(train_clean_loader), len(test_clean_loader), len(test_backdoor_loader)))
             # Data.check_loaders(train_merge_loader,'fml_train_merge_loader',class_names,'poison')
@@ -136,8 +132,7 @@ def main(args):
             global_prompter_current = now_node.prompter
             # continue
             # 开始训练
-    
-            
+
             for now_epoch in range(args.epochs):
                 args.now_step = i*args.epochs + now_epoch
                 local_best_acc = 0
@@ -159,33 +154,35 @@ def main(args):
                     loss, top1 = train_clean(indices, train_clean_loader, model, prev_prompt, global_prompter_current, now_node.prompter, now_node.optimizer,
                                              now_node.scheduler, now_node.criterion, now_node.epoch + 1, now_node.args)
                 now_node.epoch += 1
+                if is_poison:
+                    desc = 'Round {}/{} Node_{} Poison Epoch {} Loss is {:4.5f}'
+                else:
+                    desc = 'Round {}/{} Node_{} Clean  Epoch {} Loss is {:4.5f}'
+                print(desc.format(i+1, args.round, node_id, now_epoch + 1, loss))
+
                 # print(top1,losses)
                 # acc = 0
-                acc = validate(indices, test_clean_loader, model,
-                               now_node.prompter, now_node.criterion, now_node.args)
-                asr = validate(indices, test_backdoor_loader, model,
-                               now_node.prompter, now_node.criterion, now_node.args)
 
-                data_save['node_{}_acc'.format(i)].append(acc)
-                data_save['node_{}_asr'.format(i)].append(asr)
-                data_save['node_{}_loss'.format(i)].append(loss)
+            acc = validate(indices, test_clean_loader, model,
+                           now_node.prompter, now_node.criterion, now_node.args)
+            asr = validate(indices, test_backdoor_loader, model,
+                           now_node.prompter, now_node.criterion, now_node.args)
 
-                if is_poison:
-                    desc = 'Round {}/{} Node_{} Poison Epoch {} Acc is {:5.2f} Asr is {:5.2f} Loss is {:4.5f}'
-                else:
-                    desc = 'Round {}/{} Node_{} Clean  Epoch {} Acc is {:5.2f} Asr is {:5.2f} Loss is {:4.5f}'
+            if is_poison:
+                desc = 'Round {}/{} Node_{} Poison  Acc is {:5.2f} Asr is {:5.2f} '
+            else:
+                desc = 'Round {}/{} Node_{} Clean   Acc is {:5.2f} Asr is {:5.2f} '
 
-                print(desc.format(
-                    i+1, args.round, node_id, now_node.epoch, acc, asr, loss))
+            print(desc.format(
+                i+1, args.round, node_id, acc, asr))
 
+            now_node.best_acc = acc
+            now_node.best_asr = asr
+            if acc > now_node.best_acc:
+                now_node.save_checkpoint(isbest=True)
                 now_node.best_acc = acc
-                now_node.best_asr = asr
-                if acc > now_node.best_acc:
-                    now_node.save_checkpoint(isbest=True)
-                    now_node.best_acc = acc
-                now_node.save_checkpoint()
-            # 保存模型
-            pass
+            now_node.save_checkpoint()
+        
             # node_list[node_id] = now_node # 可要可不要吧？1
             select_idx_list.append(node_id)
             will_merge_prompter_list.append(now_node.prompter)  # 还是只聚合本轮训练的模型
@@ -209,13 +206,12 @@ def main(args):
         print('Round {}/{} Globalnode Acc is {:4.2f} Asr is {:4.2f} '.format(i +
               1, args.round, global_acc, global_asr))
 
-        data_save['global_acc'].append(global_acc)
-        data_save['global_asr'].append(global_asr)
-
         global_node.save_checkpoint()
         if global_node.best_acc < global_acc:
             global_node.save_checkpoint(isbest=True)
             global_node.best_acc = global_acc
+        # end_time_1 = time.time()
+        # print(f"第一段代码执行时间：{end_time_1 - start_time}秒")
 
 
 if __name__ == '__main__':

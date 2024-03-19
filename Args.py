@@ -4,7 +4,7 @@ import os
 def parse_option():
     parser = argparse.ArgumentParser('Visual Prompting for CLIP')
     
-    parser.add_argument('--round', type=int, default=100,
+    parser.add_argument('--round', type=int, default=50,
                         help='round')
     parser.add_argument('--select_num', type=int, default=10,
                         help='client num for each round')
@@ -69,12 +69,13 @@ def parse_option():
                         action="store_true",
                         help='whether to use the frequency of the original labels to map the downstream labels')
     parser.add_argument('--merge_mode', type=str, default='avg',
-                        choices=['avg','moon','prox'],
+                        choices=['avg','moon','prox','opt'],
                         help='methods of aggregation')
     # dataset
     parser.add_argument('--root', type=str, default='./data/cifar10',
                         help='dataset')
     parser.add_argument('--dataset', type=str, default='cifar10',
+                        choices=['cifar10','caltech101','svhn','food101'],
                         help='dataset')
     parser.add_argument('--image_size', type=int, default=224,
                         help='image size')
